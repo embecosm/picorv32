@@ -40,6 +40,8 @@ class Cpu final
   // Accessors
 
   void step ();
+  bool inReset (void) const;
+  bool haveTrap (void) const;
   uint8_t readMem (uint32_t addr) const;
   void writeMem (uint32_t addr,
 		 uint8_t  val);

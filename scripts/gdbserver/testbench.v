@@ -67,7 +67,17 @@ module testbench (
 	reg [7:0] memory [0:4*1024*1024-1];
 	//initial $readmemh("test.hex", memory);
 
-`ifdef verilator
+`ifdef GDBSERVER
+   function integer inReset;
+      /* verilator public */
+      inReset = resetn ? 0 : 1;
+   endfunction
+
+   function integer haveTrap;
+      /* verilator public */
+      haveTrap = (resetn && trap) ? 1 : 0;
+   endfunction
+
    function [7:0] readMem;
       /* verilator public */
       input [31:0] addr;
@@ -80,7 +90,7 @@ module testbench (
       input [7:0]  val;
       memory[addr] = val;
    endtask
-`endif //  `ifdef verilator
+`endif //  `ifdef GDBSERVER
 
 	assign mem_ready = x32[0] && mem_valid;
 
@@ -105,6 +115,7 @@ module testbench (
 		end
 	end
 
+`ifndef GDBSERVER
 	always @(posedge clk) begin
 		if (resetn && trap) begin
 			// repeat (10) @(posedge clk);
@@ -112,4 +123,6 @@ module testbench (
 			$finish;
 		end
 	end
+`endif //  `ifndef GDBSERVER
+
 endmodule
