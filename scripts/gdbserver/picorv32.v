@@ -185,7 +185,7 @@ module picorv32 #(
 
    function [31:0] readReg;
       /* verilator public */
-      integer regno;
+      input integer regno;
       readReg = cpuregs[regno];
    endfunction
 
@@ -201,10 +201,10 @@ module picorv32 #(
       cpuregs[regno] = val;
    endtask
 
-   task writePC;
+   task writePc;
        /* verilator public */
       input [31:0]  val;
-      /*reg_next_pc = val;*/
+      next_pc = val;
    endtask
 
 `endif //  `ifdef verilator

@@ -3,6 +3,7 @@
 // Copyright (C) 2017  Embecosm Limited <info@embecosm.com>
 
 // Contributor Jeremy Bennett <jeremy.bennett@embecosm.com>
+// Contibutor Ian Bolton <ian.bolton@embecosm.com>
 
 // This file is part of the RISC-V GDB server
 
@@ -23,7 +24,7 @@
 
 #include "Cpu.h"
 #include "Vtestbench_testbench.h"
-
+#include "Vtestbench_picorv32__C1_EF1_EH1.h"
 
 //! Constructor. Instantiate the Verilator model and initialize the clock.
 
@@ -79,13 +80,26 @@ Cpu::writeMem (uint32_t addr,
 uint32_t
 Cpu::readReg (unsigned int regno) const
 {
-  return  0;
+  return mCpu->testbench->uut->readReg(regno);
 }
 
 void
 Cpu::writeReg (unsigned int regno,
 	       uint32_t     val)
 {
+  mCpu->testbench->uut->writeReg(regno, val);
+}
+
+uint32_t
+Cpu::readProgramAddr () const
+{
+  return  mCpu->testbench->uut->readPc();
+}
+
+void
+Cpu::writeProgramAddr (uint32_t     val)
+{
+  mCpu->testbench->uut->writePc(val);
 }
 
 

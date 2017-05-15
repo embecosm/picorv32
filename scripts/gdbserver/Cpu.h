@@ -3,6 +3,7 @@
 // Copyright (C) 2017  Embecosm Limited <info@embecosm.com>
 
 // Contributor Jeremy Bennett <jeremy.bennett@embecosm.com>
+// Contibutor Ian Bolton <ian.bolton@embecosm.com>
 
 // This file is part of the RISC-V GDB server
 
@@ -27,7 +28,6 @@
 #include "Vtestbench.h"
 #include "verilated.h"
 
-
 class Cpu final
 {
  public:
@@ -46,6 +46,8 @@ class Cpu final
   uint32_t readReg (unsigned int regno) const;
   void writeReg (unsigned int regno,
 		 uint32_t     val);
+  void writeProgramAddr (uint32_t addr);
+  uint32_t readProgramAddr () const;
 
  private:
 
