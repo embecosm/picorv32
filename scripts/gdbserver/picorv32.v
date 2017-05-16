@@ -173,6 +173,10 @@ module picorv32 #(
 	reg [31:0] irq_pending;
 	reg [31:0] timer;
 
+`ifdef GDBSERVER
+	reg [31:0] prog_start_address;
+`endif //  `ifdef GDBSERVER
+
 	integer i;
 	initial begin
 		if (REGS_INIT_ZERO) begin
@@ -204,7 +208,7 @@ module picorv32 #(
    task writePc;
        /* verilator public */
       input [31:0]  val;
-      next_pc = val;
+      prog_start_address = val;
    endtask
 
 `endif //  `ifdef GDBSERVER
@@ -1404,8 +1408,13 @@ module picorv32 #(
 			trace_data <= 'bx;
 
 		if (!resetn) begin
+`ifdef GDBSERVER
+			reg_pc <= prog_start_address;
+			reg_next_pc <= prog_start_address;
+`else
 			reg_pc <= PROGADDR_RESET;
 			reg_next_pc <= PROGADDR_RESET;
+`endif //  `ifdef GDBSERVER
 			if (ENABLE_COUNTERS)
 				count_instr <= 0;
 			latched_store <= 0;
