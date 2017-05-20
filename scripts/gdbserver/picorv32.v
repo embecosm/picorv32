@@ -127,6 +127,10 @@ module picorv32 #(
 	output reg [31:0] rvfi_mem_wdata,
 `endif
 
+`ifdef GDBSERVER
+	reg clear_trap,
+`endif
+
 	// Trace Interface
 	output reg        trace_valid,
 	output reg [35:0] trace_data
@@ -174,7 +178,7 @@ module picorv32 #(
 	reg [31:0] timer;
 
 `ifdef GDBSERVER
-	reg [31:0] prog_start_address;
+	reg [31:0] pc_to_continue_from;
 `endif //  `ifdef GDBSERVER
 
 	integer i;
@@ -208,7 +212,12 @@ module picorv32 #(
    task writePc;
        /* verilator public */
       input [31:0]  val;
-      prog_start_address = val;
+      pc_to_continue_from = val;
+   endtask
+
+   task clearTrapAndContinue;
+       /* verilator public */
+       clear_trap = 1;
    endtask
 
 `endif //  `ifdef GDBSERVER
@@ -1407,11 +1416,13 @@ module picorv32 #(
 		if (!ENABLE_TRACE)
 			trace_data <= 'bx;
 
-		if (!resetn) begin
 `ifdef GDBSERVER
-			reg_pc <= prog_start_address;
-			reg_next_pc <= prog_start_address;
+		if (!resetn || (clear_trap && cpu_state == cpu_state_trap)) begin
+			reg_pc <= pc_to_continue_from;
+			reg_next_pc <= pc_to_continue_from;
+			clear_trap = 0;
 `else
+		if (!resetn) begin
 			reg_pc <= PROGADDR_RESET;
 			reg_next_pc <= PROGADDR_RESET;
 `endif //  `ifdef GDBSERVER
