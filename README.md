@@ -25,6 +25,7 @@ PicoRV32 is free and open hardware licensed under the [ISC license](http://en.wi
 - [Building a pure RV32I Toolchain](#building-a-pure-rv32i-toolchain)
 - [Linking binaries with newlib for PicoRV32](#linking-binaries-with-newlib-for-picorv32)
 - [Evaluation: Timing and Utilization on Xilinx 7-Series FPGAs](#evaluation-timing-and-utilization-on-xilinx-7-series-fpgas)
+- [GDB Server](#gdb-server)
 
 
 Features and Typical Applications
@@ -125,6 +126,11 @@ Another simple test firmware that runs the Dhrystone benchmark.
 #### scripts/
 
 Various scripts and examples for different (synthesis) tools and hardware architectures.
+
+#### gdbserver/
+
+A gdbserver, currently only for the Verilator model, to allow you to use the
+processor as a GDB debug target.
 
 
 Verilog Module Parameters
@@ -725,3 +731,66 @@ See `make area` in [scripts/vivado/](scripts/vivado/).
 | PicoRV32 (regular) |        874 |             48 |             572 |
 | PicoRV32 (large)   |       2072 |             88 |            1022 |
 
+
+GDB Server
+----------
+
+The GDB server can be built in the `gdbserver` directory. It will accept GDB
+Remote Serial Protocol packets over a TCP/IP connection.
+
+#### Building the GDB server
+
+Build using the supplied Makefile.
+```
+$ make
+```
+
+If you are using your own verilator, you will need to tell `make` where to
+find the verilator generic headers, for example:
+```
+$ make VSHAREDIR=/opt/myverilator/share/verilator
+```
+
+#### Running the GDB server
+
+, then run as follows:
+```
+$ ./riscv-gdbserver 51000
+```
+The supplied argument is the port to listen on. A value in the ephemeral range
+(49,152 - 65,535) is appropriate.
+
+GDB for RISC-V running on the same machine can then connect to the target using
+```
+(gdb) target remote :51000
+```
+
+A full GDB session might be something like:
+```
+$ riscv-gcc -o hello hello.c
+$ riscv-gdb hello
+...
+(gdb) target remote :51000
+(gdb) load
+(gdb) break main
+(gdb) break exit
+(gdb) continue
+(gdb) continue
+(gdb) detach
+(gdb) quit
+```
+
+The first `continue` will run from the startup code to the start of the `main
+()` function, the second `continue` will resume execution until the program
+gets to the `exit ()` function.
+
+#### Implementation of the GDB Server
+
+The Verilog code has some extensions surrounded by `ifdef GDBSERVER` and
+`endif` which add some registers to allow the processor to be restarted after
+trapping and to provide tasks and functions so that a C program can access
+registers and memory.
+
+The GDB server provides TCP/IP connectivity to receive and send packets from
+and to the GDB client.  The main method of the `GdbServer` class is a switch
+statement to examine these packets and take appropriate action.

@@ -127,6 +127,10 @@ module picorv32 #(
 	output reg [31:0] rvfi_mem_wdata,
 `endif
 
+`ifdef GDBSERVER
+	reg clear_trap,
+`endif
+
 	// Trace Interface
 	output reg        trace_valid,
 	output reg [35:0] trace_data
@@ -173,6 +177,10 @@ module picorv32 #(
 	reg [31:0] irq_pending;
 	reg [31:0] timer;
 
+`ifdef GDBSERVER
+	reg [31:0] pc_to_continue_from;
+`endif //  `ifdef GDBSERVER
+
 	integer i;
 	initial begin
 		if (REGS_INIT_ZERO) begin
@@ -180,6 +188,39 @@ module picorv32 #(
 				cpuregs[i] = 0;
 		end
 	end
+
+`ifdef GDBSERVER
+
+   function [31:0] readReg;
+      /* verilator public */
+      input integer regno;
+      readReg = cpuregs[regno];
+   endfunction
+
+   function [31:0] readPc;
+      /* verilator public */
+      readPc = reg_pc;
+   endfunction
+
+   task writeReg;
+       /* verilator public */
+      input integer regno;
+      input [31:0]  val;
+      cpuregs[regno] = val;
+   endtask
+
+   task writePc;
+       /* verilator public */
+      input [31:0]  val;
+      pc_to_continue_from = val;
+   endtask
+
+   task clearTrapAndContinue;
+       /* verilator public */
+       clear_trap = 1;
+   endtask
+
+`endif //  `ifdef GDBSERVER
 
 	task empty_statement;
 		// This task is used by the `assert directive in non-formal mode to
@@ -1387,9 +1428,16 @@ module picorv32 #(
 		if (!ENABLE_TRACE)
 			trace_data <= 'bx;
 
+`ifdef GDBSERVER
+		if (!resetn || (clear_trap && cpu_state == cpu_state_trap)) begin
+			reg_pc <= pc_to_continue_from;
+			reg_next_pc <= pc_to_continue_from;
+			clear_trap = 0;
+`else
 		if (!resetn) begin
 			reg_pc <= PROGADDR_RESET;
 			reg_next_pc <= PROGADDR_RESET;
+`endif //  `ifdef GDBSERVER
 			if (ENABLE_COUNTERS)
 				count_instr <= 0;
 			latched_store <= 0;
