@@ -41,6 +41,11 @@ using std::endl;
 using std::strcmp;
 
 
+//! The CPU instance we will create.
+
+static  Cpu * cpu;		// Here, so we can access it for time stamp
+
+
 int
 main (int   argc,
       char *argv[] )
@@ -92,7 +97,7 @@ main (int   argc,
   TraceFlags *traceFlags = new TraceFlags (flags);
 
   // The RISC-V model
-  Cpu    *cpu = new Cpu ();
+  cpu = new Cpu (traceFlags);
 
   // The cpu will still be in reset at this point, but we need to set its
   // start address before it is out of reset. We can do this within the
@@ -112,8 +117,17 @@ main (int   argc,
 
   return 255;			// If we return it's a failure!
 
-}	/* sc_main() */
+}	/* main() */
 
+
+//! Function to handle $time calls in the Verilog
+
+double
+sc_time_stamp ()
+{
+  return cpu->timeStamp ();
+
+}
 
 // Local Variables:
 // mode: C++

@@ -23,70 +23,51 @@
 #include <cstdint>
 
 #include "Cpu.h"
+#include "verilated_vcd_c.h"
 #include "Vwrapper_wrapper.h"
-#include "Vwrapper_picorv32__C1_EF1_EH1.h"
+#include "Vwrapper_picorv32.h"
 
 //! Constructor. Instantiate the Verilator model and initialize the clock.
 
-Cpu::Cpu ()
+Cpu::Cpu (TraceFlags * traceFlags) :
+  mTraceFlags (traceFlags),
+  mCpuTime (0),
+  mPrevPc (0)
 {
   mCpu = new Vwrapper;
-  mClk = 0;
-}
+
+  // Open VCD file if requested
+
+  if (mTraceFlags->traceVcd ())
+    {
+      Verilated::traceEverOn (true);
+      mTfp = new VerilatedVcdC;
+      mCpu->trace (mTfp, 99);
+      mTfp->open ("gdbserver.vcd");
+    }
+
+  // Reset the processor for 100 cycles
+
+  mCpu->resetn = 0;
+
+  for (int i = 0; i < 100; i++)
+    oneCycle ();
+
+}	// Cpu::Cpu ()
 
 
 //! Destructor. Delete the Verilator model.
 
 Cpu::~Cpu ()
 {
+  // Close VCD file if requested
+
+  if (mTraceFlags->traceVcd ())
+    mTfp->close ();
+
   delete mCpu;
-}
 
-
-// ! Step one single clock of the processor
-
-void
-Cpu::clockStep ()
-{
-  mCpu->clk = mClk;
-  mCpu->eval ();
-  mClk++;
-}	// Cpu::clockStep ()
-
-
-// ! If trap is set, then get the processor in the right state to
-// ! redo that instruction properly
-
-void
-Cpu::clearTrapAndRestartInstruction ()
-{
-  // do nothing if trap is not set
-  if (haveTrap ())
-  {
-    // the trap happened on the instruction we want to continue from
-    uint32_t prev_pc = mCpu->wrapper->cpu->readPc();
-    // unfortunately, when we come out of trap, the instruction at the current
-    // pc effectively becomes a NOP, so we actually need to set pc to the
-    // previous instruction and then execute it. We then end up at the
-    // desired pc that will execute properly.
-    mCpu->wrapper->cpu->writePc (prev_pc-4);
-    mCpu->wrapper->cpu->clearTrapAndContinue ();
-    // loop until the processor has come out of the trap and changed pc to
-    // the value we wrote above
-    do
-    {
-      clockStep ();
-    }
-    while (prev_pc == readProgramAddr ());
-    // pc now is at the prev instruction, which will effectively work as a NOP
-    // and get us to the instruction we actually want to continue from, so
-    // let's step it
-    step ();
-    // we are now ready to properly execute the instruction that trapped
-
-  }
-
-}	// Cpu::clearTrapAndRestartInstruction ()
+}	// Cpu::~Cpu ()
 
 
 //! Step one instruction execution
@@ -94,36 +75,40 @@ Cpu::clearTrapAndRestartInstruction ()
 bool
 Cpu::step ()
 {
-  uint32_t prev_pc = readProgramAddr ();
+  // If we are trapped, we need to release the trap and re-execute the
+  // instruction, otherwise we just execute the next instruction.
+
+  uint32_t prevPc;
+
+  if (1 == mCpu->trap)
+    {
+      // The trap happened on the instruction we want to re-execute. Clear the
+      // trap, set the new PC and assert
+
+      prevPc = mCpu->wrapper->cpu->readPrevPc ();
+      mCpu->wrapper->cpu->clearTrap ();
+      mCpu->wrapper->cpu->writePc (mPrevPc);
+      mCpu->resetn = 1;			// Not in reset
+      oneCycle ();
+    }
+
+  // Now step whole clock cycles (not just one edge) until the PC changes.
+
+  // TODO: This breaks if we have zero-overhad loops. Need to check this in
+  // RISC-V.
+
+  prevPc = readProgramAddr ();
+  mCpu->resetn = 1;			// Not in reset
+
   do
   {
-    clockStep ();
+    oneCycle ();
   }
-  while (prev_pc == readProgramAddr () && haveTrap () == 0);
-  return haveTrap () == 1;
+  while ((prevPc == readProgramAddr ()) && (mCpu->trap == 0));
+
+  return mCpu->trap == 1;
+
 }	// Cpu::step ()
-
-
-//! Are we in reset?
-
-bool
-Cpu::inReset (void) const
-{
-  int res = mCpu->wrapper->inReset ();
-  return res == 1;
-
-}	// inReset ()
-
-
-//! Have we hit a trap?
-
-bool
-Cpu::haveTrap (void) const
-{
-  int  res = mCpu->wrapper->haveTrap ();
-  return res == 1;
-
-}	// haveTrap ()
 
 
 //! Read from memory
@@ -175,23 +160,77 @@ uint32_t
 Cpu::readProgramAddr () const
 {
   return  mCpu->wrapper->cpu->readPc ();
+
 }	// Cpu::readProgramAddr ()
 
 
-//! Write the PC
+//! Write the PC. To do this we need to trap the processor (which flushes the
+//! pipeline and then clock in a new PC.
 
 void
 Cpu::writeProgramAddr (uint32_t val)
 {
+  // Trap the processor and cycle for it to take effect.
+
+  mCpu->wrapper->cpu->assertTrap ();
+  mCpu->resetn = 1;			// Not in reset
+  oneCycle ();
+
+  // Clear the trap, write the PC and cycle for it to take effect.
+
+  mCpu->wrapper->cpu->clearTrap ();
   mCpu->wrapper->cpu->writePc (val);
-  while (inReset ()) {
-    // keep stepping the clock and writing PC while in reset, so that we are
-    // at the desired start address once out of reset.
-    clockStep ();
-    mCpu->wrapper->cpu->writePc (val);
-  }
+  mCpu->resetn = 1;			// Not in reset
+  oneCycle ();
 
 }	// Cpu::writeProgramAddr ()
+
+
+//! Flush the VCD if we are tracing
+
+void
+Cpu::flushVcd (void)
+{
+  if (mTraceFlags->traceVcd ())
+    mTfp->flush ();
+
+}	// Cpu::flushVcd ()
+
+
+//! Provide a time stamp (needed for $time)
+
+//! @return  The time in nanoseconds
+
+double
+Cpu::timeStamp (void)
+{
+  return static_cast<double> (mCpuTime);
+
+}	// timeStamp ()
+
+
+//! Helper to step one full clock cycle
+
+void
+Cpu::oneCycle ()
+{
+  mCpu->clk = 0;
+  mCpu->eval ();
+  if (mTraceFlags->traceVcd ())
+    {
+      mCpuTime += 5;			// in ns
+      mTfp->dump (mCpuTime);
+    }
+
+  mCpu->clk = 1;
+  mCpu->eval ();
+  if (mTraceFlags->traceVcd ())
+    {
+      mCpuTime += 5;			// in ns
+      mTfp->dump (mCpuTime);
+    }
+
+}	// oneCycle ()
 
 
 // Local Variables:

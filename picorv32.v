@@ -129,6 +129,7 @@ module picorv32 #(
 
 `ifdef GDBSERVER
 	reg clear_trap,
+	reg assert_trap,
 `endif
 
 	// Trace Interface
@@ -178,6 +179,7 @@ module picorv32 #(
 	reg [31:0] timer;
 
 `ifdef GDBSERVER
+	reg [31:0] reg_prev_pc;
 	reg [31:0] pc_to_continue_from;
 `endif //  `ifdef GDBSERVER
 
@@ -191,34 +193,51 @@ module picorv32 #(
 
 `ifdef GDBSERVER
 
-   function [31:0] readReg;
-      /* verilator public */
-      input integer regno;
-      readReg = cpuregs[regno];
-   endfunction
+	function [31:0] readReg;
+		/* verilator public */
+		input integer regno;
+		readReg = cpuregs[regno];
+	endfunction
 
-   function [31:0] readPc;
-      /* verilator public */
-      readPc = reg_pc;
-   endfunction
+	function [31:0] readPc;
+		/* verilator public */
+		readPc = reg_pc;
+	endfunction
 
-   task writeReg;
-       /* verilator public */
-      input integer regno;
-      input [31:0]  val;
-      cpuregs[regno] = val;
-   endtask
+	function [31:0] readPrevPc;
+		/* verilator public */
+		readPrevPc = reg_prev_pc;
+	endfunction
 
-   task writePc;
-       /* verilator public */
-      input [31:0]  val;
-      pc_to_continue_from = val;
-   endtask
+	function [31:0] readNextPc;
+		/* verilator public */
+		readNextPc = reg_next_pc;
+	endfunction
 
-   task clearTrapAndContinue;
-       /* verilator public */
-       clear_trap = 1;
-   endtask
+	task writeReg;
+		 /* verilator public */
+		input integer regno;
+		input [31:0]  val;
+		cpuregs[regno] = val;
+	endtask
+
+	task writePc;
+		 /* verilator public */
+		input [31:0]  val;
+		pc_to_continue_from = val;
+	endtask
+
+	task assertTrap;
+		/* verilator public */
+		clear_trap  = 0;
+		assert_trap = 1;
+	endtask
+
+	task clearTrap;
+		/* verilator public */
+		clear_trap  = 1;
+		assert_trap = 0;
+	endtask
 
 `endif //  `ifdef GDBSERVER
 
@@ -857,9 +876,9 @@ module picorv32 #(
 	always @(posedge clk) begin
 		if (dbg_next) begin
 			if (&dbg_insn_opcode[1:0])
-				$display("DECODE: 0x%08x 0x%08x %-0s", dbg_insn_addr, dbg_insn_opcode, dbg_ascii_instr ? dbg_ascii_instr : "UNKNOWN");
+				$display("DECODE: 0x%08x 0x%08x %0s", dbg_insn_addr, dbg_insn_opcode, dbg_ascii_instr ? dbg_ascii_instr : "UNKNOWN");
 			else
-				$display("DECODE: 0x%08x     0x%04x %-0s", dbg_insn_addr, dbg_insn_opcode[15:0], dbg_ascii_instr ? dbg_ascii_instr : "UNKNOWN");
+				$display("DECODE: 0x%08x     0x%04x %0s", dbg_insn_addr, dbg_insn_opcode[15:0], dbg_ascii_instr ? dbg_ascii_instr : "UNKNOWN");
 		end
 	end
 `endif
@@ -1428,16 +1447,9 @@ module picorv32 #(
 		if (!ENABLE_TRACE)
 			trace_data <= 'bx;
 
-`ifdef GDBSERVER
-		if (!resetn || (clear_trap && cpu_state == cpu_state_trap)) begin
-			reg_pc <= pc_to_continue_from;
-			reg_next_pc <= pc_to_continue_from;
-			clear_trap = 0;
-`else
 		if (!resetn) begin
 			reg_pc <= PROGADDR_RESET;
 			reg_next_pc <= PROGADDR_RESET;
-`endif //  `ifdef GDBSERVER
 			if (ENABLE_COUNTERS)
 				count_instr <= 0;
 			latched_store <= 0;
@@ -1466,7 +1478,47 @@ module picorv32 #(
 		(* parallel_case, full_case *)
 		case (cpu_state)
 			cpu_state_trap: begin
+`ifdef GDBSERVER
+				// We are allowed to clear the trap. This is
+				// similar to reset, except:
+				// - we set the PC to the resume location
+				// - we don't reset the instruction count
+				// - we don't change the IRQ state or timer
+				// We leave these here commented out.
+				if (1'b1 == clear_trap) begin
+					reg_pc      <= pc_to_continue_from;
+					reg_next_pc <= pc_to_continue_from;
+					// if (ENABLE_COUNTERS)
+					// 	count_instr <= 0;
+					latched_store <= 0;
+					latched_stalu <= 0;
+					latched_branch <= 0;
+					latched_trace <= 0;
+					latched_is_lu <= 0;
+					latched_is_lh <= 0;
+					latched_is_lb <= 0;
+					pcpi_valid <= 0;
+					pcpi_timeout <= 0;
+					irq_active <= 0;
+					irq_delay <= 0;
+					irq_mask <= ~0;
+					next_irq_pending = 0;
+					irq_state <= 0;
+					eoi <= 0;
+					timer <= 0;
+					if (~STACKADDR) begin
+						latched_store <= 1;
+						latched_rd <= 2;
+						reg_out <= STACKADDR;
+					end
+					cpu_state <= cpu_state_fetch;
+					trap <= 0;
+				end else begin
+					trap <= 1;
+				end
+`else // !`ifdef GDBSERVER
 				trap <= 1;
+`endif // !`ifdef GDBSERVER
 			end
 
 			cpu_state_fetch: begin
@@ -1536,7 +1588,7 @@ module picorv32 #(
 						do_waitirq <= 1;
 				end else
 				if (decoder_trigger) begin
-					`debug($display("-- %-0t", $time);)
+					`debug($display("-- %0t", $time);)
 					irq_delay <= irq_active;
 					reg_next_pc <= current_pc + (compressed_instr ? 2 : 4);
 					if (ENABLE_TRACE)
@@ -1585,7 +1637,7 @@ module picorv32 #(
 								end else
 								if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
 									pcpi_valid <= 0;
-									`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
+									`debug($display("EBREAK OR UNSUPPORTED INSN (1) AT 0x%08x", reg_pc);)
 									if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
 										next_irq_pending[irq_ebreak] = 1;
 										cpu_state <= cpu_state_fetch;
@@ -1596,7 +1648,7 @@ module picorv32 #(
 								cpu_state <= cpu_state_ld_rs2;
 							end
 						end else begin
-							`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
+							`debug($display("EBREAK OR UNSUPPORTED INSN (2) AT 0x%08x", reg_pc);)
 							if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
 								next_irq_pending[irq_ebreak] = 1;
 								cpu_state <= cpu_state_fetch;
@@ -1757,7 +1809,7 @@ module picorv32 #(
 						end else
 						if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
 							pcpi_valid <= 0;
-							`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
+							`debug($display("EBREAK OR UNSUPPORTED INSN (3) AT 0x%08x", reg_pc);)
 							if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
 								next_irq_pending[irq_ebreak] = 1;
 								cpu_state <= cpu_state_fetch;
@@ -1919,6 +1971,14 @@ module picorv32 #(
 		if (!CATCH_ILLINSN && decoder_trigger_q && !decoder_pseudo_trigger_q && instr_ecall_ebreak) begin
 			cpu_state <= cpu_state_trap;
 		end
+
+`ifdef GDBSERVER
+		reg_prev_pc <= reg_pc;		// Save this.
+
+		// We have asserted a trap externally
+		if (1'b1 == assert_trap)
+			cpu_state <= cpu_state_trap;
+`endif
 
 		if (!resetn || mem_done) begin
 			mem_do_prefetch <= 0;

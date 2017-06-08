@@ -38,14 +38,19 @@ public:
 
   // Accessors
   bool traceRsp ();
+  bool traceServer ();
+  bool traceVcd ();
 
 
 private:
 
   // Definition of flag values
-  static const unsigned int TRACE_MASK = 0x00000001;	//!< Trace flag mask
-  static const unsigned int TRACE_NONE = 0x00000000;	//!< Trace nothing
-  static const unsigned int TRACE_RSP  = 0x00000001;	//!< Trace RSP packets
+  static const unsigned int TRACE_MASK   = 0x00000007;	//!< Trace flag mask
+
+  static const unsigned int TRACE_NONE   = 0x00000000;	//!< Trace nothing
+  static const unsigned int TRACE_RSP    = 0x00000001;	//!< Trace RSP packets
+  static const unsigned int TRACE_SERVER = 0x00000002;	//!< Trace the server
+  static const unsigned int TRACE_VCD    = 0x00000004;	//!< Generate VCD
 
   //! The trace flags
   unsigned int  flags;

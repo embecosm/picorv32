@@ -40,7 +40,8 @@ OBJS = Cpu.o             \
        TraceFlags.o      \
        Utils.o
 VMK = obj_dir/Vwrapper.mk
-VOBJS = obj_dir/verilated.o \
+VOBJS = obj_dir/verilated.o       \
+	obj_dir/verilated_vcd_c.o \
 	obj_dir/verilated_dpi.o
 VLIB = obj_dir/Vwrapper__ALL.a
 
@@ -48,15 +49,20 @@ $(EXE): $(VLIB) $(VOBJS) $(OBJS)
 	$(LD) -o $@ $(OBJS) $(VLIB) $(VOBJS)
 
 $(VOBJS): $(VMK)
-	$(MAKE) -C obj_dir -f Vwrapper.mk verilated.o
-	$(MAKE) -C obj_dir -f Vwrapper.mk verilated_dpi.o
+	for f in $@; \
+	do \
+		sf=$$(basename $$f); \
+		$(MAKE) -C obj_dir -f Vwrapper.mk $$sf; \
+	done
 
 $(VLIB): $(VMK)
 	$(MAKE) -C obj_dir -f Vwrapper.mk
 
 $(VMK): wrapper.v ../picorv32.v
 	$(VERILATOR) -Wno-fatal --cc --top-module wrapper \
-		  -DGDBSERVER -CFLAGS -std=gnu++11 $^
+		-Wno-PINMISSING -Wno-WIDTH -Wno-CASEINCOMPLETE \
+		-Wno-CASEOVERLAP \
+		--trace -DGDBSERVER -CFLAGS -std=gnu++11 $^
 
 # Clean up everything we've created.
 

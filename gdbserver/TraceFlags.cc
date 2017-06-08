@@ -55,6 +55,28 @@ TraceFlags::traceRsp ()
 }	// traceRsp ()
 
 
+//! Is server tracing enabled?
+
+//! @return  TRUE if the server tracing flag is set, FALSE otherwise
+bool
+TraceFlags::traceServer ()
+{
+  return (flags & TRACE_SERVER) == TRACE_SERVER;
+
+}	// traceServer ()
+
+
+//! Is VCD tracing enabled?
+
+//! @return  TRUE if the VCD tracing flag is set, FALSE otherwise
+bool
+TraceFlags::traceVcd ()
+{
+  return (flags & TRACE_VCD) == TRACE_VCD;
+
+}	// traceVcd ()
+
+
 // Local Variables:
 // mode: C++
 // c-file-style: "gnu"

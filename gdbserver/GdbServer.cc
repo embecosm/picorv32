@@ -140,34 +140,9 @@ GdbServer::rspClientRequest ()
 
   switch (pkt->data[0])
     {
-    case '!':
-      // Request for extended remote mode
-      pkt->packStr ("OK");
-      rsp->putPkt (pkt);
-      return;
-
     case '?':
       // Return last signal ID
       rspReportException ();
-      return;
-
-    case 'A':
-      // Initialization of argv not supported
-      cerr << "Warning: RSP 'A' packet not supported: ignored" << endl;
-      pkt->packStr ("E01");
-      rsp->putPkt (pkt);
-      return;
-
-    case 'b':
-      // Setting baud rate is deprecated
-      cerr << "Warning: RSP 'b' packet is deprecated and not "
-	   << "supported: ignored" << endl;
-      return;
-
-    case 'B':
-      // Breakpoints should be set using Z packets
-      cerr << "Warning: RSP 'B' packet is deprecated (use 'Z'/'z' "
-	   << "packets instead): ignored" << endl;
       return;
 
     case 'c':
@@ -175,9 +150,8 @@ GdbServer::rspClientRequest ()
       // need to be clearer about the exception we report back.
       timeout_start = std::clock ();
 
-#ifdef GDBSERVER_DEBUG
-      fprintf (stderr, "Continuing...\n");
-#endif
+      if (traceFlags->traceServer())
+	cout << "Server trace: Continuing..." << endl;
 
       for (int i = 0; true; i++)
 	{
@@ -188,24 +162,12 @@ GdbServer::rspClientRequest ()
 	    }
 	  if ((clock_timeout != 0)
 	      && (0 == (i % RUN_SAMPLE_PERIOD))
-	      && ((clock() - timeout_start) > clock_timeout))
+	      && ((std::clock() - timeout_start) > clock_timeout))
 	    {
 	      rspReportException (TARGET_SIGNAL_XCPU);	// Timeout
 	      return;
 	    }
 	}
-
-    case 'C':
-      // Continue with signal (in the packet). For now it is just the same as
-      // 'c'. TODO for now we report we have hit an exception.
-      rspReportException ();
-      return;
-
-    case 'd':
-      // Disable debug using a general query
-      cerr << "Warning: RSP 'd' packet is deprecated (define a 'Q' "
-	   << "packet instead: ignored" << endl;
-      return;
 
     case 'D':
       // Detach GDB. Do this by closing the client. The rules say that
@@ -215,41 +177,12 @@ GdbServer::rspClientRequest ()
       rsp->rspClose ();
       return;
 
-    case 'F':
-      // File I/O is not currently supported
-      cerr << "Warning: RSP file I/O not currently supported: 'F' "
-	   << "packet ignored" << endl;
-      return;
-
     case 'g':
       rspReadAllRegs ();
       return;
 
     case 'G':
       rspWriteAllRegs ();
-      return;
-
-    case 'H':
-      // Set the thread number of subsequent operations. For now ignore
-      // silently and just reply "OK"
-      pkt->packStr ("OK");
-      rsp->putPkt (pkt);
-      return;
-
-    case 'i':
-      // Single cycle step. TODO. For now we immediately report we have hit an
-      // exception.
-      rspReportException ();
-      return;
-
-    case 'I':
-      // Single cycle step with signal. TODO. For now we immediately report we
-      // have hit an exception.
-      rspReportException ();
-      return;
-
-    case 'k':
-      // Kill request. Do nothing for now.
       return;
 
     case 'm':
@@ -282,54 +215,16 @@ GdbServer::rspClientRequest ()
       rspSet ();
       return;
 
-    case 'r':
-      // Reset the system. Deprecated (use 'R' instead)
-      cerr << "Warning: RSP 'r' packet is deprecated (use 'R' "
- 		<< "packet instead): ignored" << endl;
-      return;
-
-    case 'R':
-      // Restart the program being debugged. TODO. Nothing for now.
-      return;
-
     case 's':
       // Single step one machine instruction. For now we ignore the address.
       // TODO. We need to be clearer about the exception, if any, that we
       // hit.
-#ifdef GDBSERVER_DEBUG
-      fprintf (stderr, "Single stepping ...\n");
-#endif
-      cpu->clearTrapAndRestartInstruction (); // does nothing if no trap
+
+      if (traceFlags->traceServer())
+	cout << "Server trace: Single stepping..." << endl;
+
       cpu->step ();
       rspReportException ();
-      return;
-
-    case 'S':
-      // Single step one machine instruction with signal. For now just the
-      // same as 's'. TODO. Need to implement properly.
-#ifdef GDBSERVER_DEBUG
-      fprintf (stderr, "Single stepping with signal ...\n");
-#endif
-      cpu->step ();
-      rspReportException ();
-      return;
-
-    case 't':
-      // Search. This is not well defined in the manual and for now we don't
-      // support it. No response is defined.
-      cerr << "Warning: RSP 't' packet not supported: ignored" << endl;
-      return;
-
-    case 'T':
-      // Is the thread alive. We are bare metal, so don't have a thread
-      // context. The answer is always "OK".
-      pkt->packStr ("OK");
-      rsp->putPkt (pkt);
-      return;
-
-    case 'v':
-      // Any one of a number of packets to control execution
-      rspVpkt ();
       return;
 
     case 'X':
@@ -348,8 +243,9 @@ GdbServer::rspClientRequest ()
       return;
 
     default:
-      // Unknown commands are ignored
-      cerr << "Warning: Unknown RSP request" << pkt->data << endl;
+      // Unknown commands send back an empty packet
+      pkt->packStr("");
+      rsp->putPkt (pkt);
       return;
     }
 }	// rspClientRequest ()
@@ -623,16 +519,24 @@ GdbServer::rspWriteReg ()
   switch (regNum)
     {
     case RISCV_PC_REGNUM:
-      /* This will only work at the very start of the program before executing anything */
-#ifdef GDBSERVER_DEBUG
-      fprintf (stderr, "Writing PC to model as 0x%x\n", val);
-#endif
+      // This will only work at the very start of the program before executing
+      // anything
+      if (traceFlags->traceServer())
+	cout << "Server trace: Writing PC to model as 0x" << hex << val << dec
+	     << endl;
+
       cpu->writeProgramAddr (val);
-#ifdef GDBSERVER_DEBUG
-      fprintf (stderr, "Reading PC back from model as 0x%x\n", cpu->readProgramAddr ());
-#endif
+
+      if (traceFlags->traceServer())
+	cout << "Server trace: Reading PC back from model as 0x" << hex
+	     << cpu->readProgramAddr () << dec << endl;
+
       break;
-    default:              cpu->writeReg(regNum, val); break;
+
+    default:
+
+      cpu->writeReg (regNum, val);
+      break;
     }
 
   pkt->packStr ("OK");
@@ -760,6 +664,10 @@ GdbServer::rspCommand ()
     {
       clock_timeout = timeout * CLOCKS_PER_SEC;
     }
+  else if (0 == strcmp (cmd, "flushvcd"))
+    {
+      cpu->flushVcd ();
+    }
   else if (0 == strcmp (cmd, "timestamp"))
     {
       std::ostringstream  oss;
@@ -775,7 +683,9 @@ GdbServer::rspCommand ()
   else if (0 == strcmp (cmd, "exit"))
     {
       // This is a bit of a kludge. It would be much better to be deleted
-      // cleanly from the top.
+      // cleanly from the top. We delete the CPU to force flushing of the VCD.
+
+      delete cpu;
       exit (0);
     }
 
@@ -1009,9 +919,9 @@ GdbServer::rspRemoveMatchpoint ()
 	  rsp->putPkt (pkt);
 	}
 
-#ifdef GDBSERVER_DEBUG
-      fprintf (stderr, "Putting back the instruction (%x) at 0x%x.\n", instr, addr);
-#endif
+      if (traceFlags->traceServer())
+	cout << "Server trace: Putting back the instruction (" << hex << instr
+	     << ") at 0x" << addr << dec << endl;
 
       // Remove the breakpoint from memory. The endianness of the instruction
       // matches that of the memory.
@@ -1176,9 +1086,9 @@ GdbServer::rspInsertMatchpoint ()
       // place.
       mpHash->add (type, addr, instr);
 
-#ifdef GDBSERVER_DEBUG
-      fprintf (stderr, "Inserting a breakpoint over the instruction (%d) at 0x%x:\n", instr, addr);
-#endif
+      if (traceFlags->traceServer())
+	cout << "Server trace: Inserting a breakpoint over the instruction ("
+	     << hex << instr << ") at 0x" << addr << dec << endl;
 
       // Little-endian, so least significant byte is at "little" address.
       cpu->writeMem (addr, BREAK_INSTR & 0xff);

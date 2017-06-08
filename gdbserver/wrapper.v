@@ -43,11 +43,11 @@ module wrapper (
    end
 `endif
 
-   // Instantiate the CPU
+   // Instantiate the CPU for a basic RV32I
 
-   picorv32 #(.COMPRESSED_ISA (1),
-	      .ENABLE_MUL     (1),
-	      .ENABLE_DIV     (1)
+   picorv32 #(.COMPRESSED_ISA (0),
+	      .ENABLE_MUL     (0),
+	      .ENABLE_DIV     (0)
 	      ) cpu (.clk         (clk        ),
 		     .resetn      (resetn     ),
 		     .trap        (trap       ),
@@ -107,16 +107,6 @@ module wrapper (
    end
 
    // Tasks and functions to give visibility to Verilator
-
-   function integer inReset;
-      /* verilator public */
-      inReset = resetn ? 0 : 1;
-   endfunction
-
-   function integer haveTrap;
-      /* verilator public */
-      haveTrap = (resetn && trap) ? 1 : 0;
-   endfunction
 
    function [7:0] readMem;
       /* verilator public */

@@ -25,6 +25,7 @@
 
 #include <cstdint>
 
+#include "TraceFlags.h"
 #include "Vwrapper.h"
 #include "verilated.h"
 
@@ -34,15 +35,12 @@ class Cpu final
 
   // Constructor and destructor
 
-  Cpu ();
+  Cpu (TraceFlags * traceFlags);
   ~Cpu ();
 
   // Accessors
 
-  void clearTrapAndRestartInstruction (void);
   bool step (void);
-  bool inReset (void) const;
-  bool haveTrap (void) const;
   uint8_t readMem (uint32_t addr) const;
   void writeMem (uint32_t addr,
 		 uint8_t  val);
@@ -52,19 +50,40 @@ class Cpu final
   uint32_t readProgramAddr () const;
   void writeProgramAddr (uint32_t addr);
 
+  // VCD related functions
+
+  void flushVcd (void);
+
+  // Verilog support functions
+
+  double timeStamp (void);
+
+
  private:
 
   //! Top level Verilator model.
 
   Vwrapper * mCpu;
 
-  //! Clock
+  //! Trace flags
 
-  unsigned int  mClk = 0;
+  TraceFlags * mTraceFlags;
 
-  //! For advancing the clock
+  //! VCD trace file pointer
 
-  void clockStep (void);
+  VerilatedVcdC * mTfp;
+
+  //! VCD time. This will be in ns and we have a 100MHz device
+
+  vluint64_t  mCpuTime;
+
+  //! Previous value of the program counter
+
+  uint32_t mPrevPc;
+
+  //! Helper to step one full clock cycle
+
+  void  oneCycle ();
 };
 
 #endif

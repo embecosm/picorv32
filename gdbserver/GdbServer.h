@@ -48,9 +48,9 @@ class GdbServer
 public:
 
   // Constructor and destructor
-  GdbServer (int         rspPort,
-	     Cpu      *_cpu,
-	     TraceFlags *_traceFlags);
+  GdbServer (int          rspPort,
+	     Cpu *        _cpu,
+	     TraceFlags * _traceFlags);
   ~GdbServer ();
 
   // Main loop to listen for and service RSP requests.

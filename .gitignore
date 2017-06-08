@@ -33,3 +33,7 @@
 /synth.log
 /synth.v
 .*.swp
+*.vcd
+gdbserver/*.o
+gdbserver/obj_dir/
+gdbserver/riscv-gdbserver
