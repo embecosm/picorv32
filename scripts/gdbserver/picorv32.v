@@ -76,6 +76,7 @@ module picorv32 #(
 ) (
 	input clk, resetn,
 	output reg trap,
+        output reg exited,
 
 	output reg        mem_valid,
 	output reg        mem_instr,
@@ -187,6 +188,7 @@ module picorv32 #(
 			for (i = 0; i < regfile_size; i = i+1)
 				cpuregs[i] = 0;
 		end
+                exited = 0;
 	end
 
 `ifdef GDBSERVER
@@ -878,8 +880,10 @@ module picorv32 #(
                 if (instr_ecall && cpuregs[17] == 92)
                     $display("Stop trigger, cycles = %d", count_cycle);
 
-                if (instr_ecall && cpuregs[17] == 93)
+                if (instr_ecall && cpuregs[17] == 93) begin
                     $display("Exit syscall, exit code %d", cpuregs[10]);
+                    exited <= 1;
+                end
 
 		if (mem_do_rinst && mem_done) begin
 			instr_lui     <= mem_rdata_latched[6:0] == 7'b0110111;

@@ -13,6 +13,7 @@ module testbench (
 	reg resetn = 0;
 	integer resetn_cnt = 0;
 	wire trap;
+        wire exited;
 
 	initial begin
 		// $dumpfile("testbench.vcd");
@@ -55,6 +56,7 @@ module testbench (
 		.clk         (clk        ),
 		.resetn      (resetn     ),
 		.trap        (trap       ),
+                .exited      (exited     ),
 		.mem_valid   (mem_valid  ),
 		.mem_instr   (mem_instr  ),
 		.mem_ready   (mem_ready  ),
@@ -76,6 +78,11 @@ module testbench (
    function integer haveTrap;
       /* verilator public */
       haveTrap = (resetn && trap) ? 1 : 0;
+   endfunction
+
+   function integer haveExited;
+     /* verilator public */
+     haveExited = exited ? 1 : 0;
    endfunction
 
    function [7:0] readMem;
