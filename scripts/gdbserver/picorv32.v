@@ -659,7 +659,7 @@ module picorv32 #(
 	reg instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw;
 	reg instr_addi, instr_slti, instr_sltiu, instr_xori, instr_ori, instr_andi, instr_slli, instr_srli, instr_srai;
 	reg instr_add, instr_sub, instr_sll, instr_slt, instr_sltu, instr_xor, instr_srl, instr_sra, instr_or, instr_and;
-	reg instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh, instr_ecall_ebreak;
+	reg instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh, instr_ecall, instr_ebreak;
 	reg instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer;
 	wire instr_trap;
 
@@ -692,7 +692,7 @@ module picorv32 #(
 			instr_addi, instr_slti, instr_sltiu, instr_xori, instr_ori, instr_andi, instr_slli, instr_srli, instr_srai,
 			instr_add, instr_sub, instr_sll, instr_slt, instr_sltu, instr_xor, instr_srl, instr_sra, instr_or, instr_and,
 			instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh,
-			instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer};
+			instr_getq, instr_setq, instr_retirq, instr_maskirq, instr_waitirq, instr_timer, instr_ecall};
 	
 	wire is_rdcycle_rdcycleh_rdinstr_rdinstrh;
 	assign is_rdcycle_rdcycleh_rdinstr_rdinstrh = |{instr_rdcycle, instr_rdcycleh, instr_rdinstr, instr_rdinstrh};
@@ -871,6 +871,15 @@ module picorv32 #(
 		is_sltiu_bltu_sltu <= |{instr_sltiu, instr_bltu, instr_sltu};
 		is_lbu_lhu_lw <= |{instr_lbu, instr_lhu, instr_lw};
 		is_compare <= |{is_beq_bne_blt_bge_bltu_bgeu, instr_slti, instr_slt, instr_sltiu, instr_sltu};
+
+                if (instr_ecall && cpuregs[17] == 91)
+                    $display("Start trigger, cycles = %d", count_cycle);
+
+                if (instr_ecall && cpuregs[17] == 92)
+                    $display("Stop trigger, cycles = %d", count_cycle);
+
+                if (instr_ecall && cpuregs[17] == 93)
+                    $display("Exit syscall, exit code %d", cpuregs[10]);
 
 		if (mem_do_rinst && mem_done) begin
 			instr_lui     <= mem_rdata_latched[6:0] == 7'b0110111;
@@ -1094,7 +1103,9 @@ module picorv32 #(
 			instr_rdinstr  <=  (mem_rdata_q[6:0] == 7'b1110011 && mem_rdata_q[31:12] == 'b11000000001000000010) && ENABLE_COUNTERS;
 			instr_rdinstrh <=  (mem_rdata_q[6:0] == 7'b1110011 && mem_rdata_q[31:12] == 'b11001000001000000010) && ENABLE_COUNTERS && ENABLE_COUNTERS64;
 
-			instr_ecall_ebreak <= ((mem_rdata_q[6:0] == 7'b1110011 && !mem_rdata_q[31:21] && !mem_rdata_q[19:7]) ||
+			instr_ecall  <= ((mem_rdata_q[6:0] == 7'b1110011 && !mem_rdata_q[31:7]) ||
+					(COMPRESSED_ISA && mem_rdata_q[15:0] == 16'h9002));
+			instr_ebreak <= ((mem_rdata_q[6:0] == 7'b1110011 && !mem_rdata_q[31:21] && mem_rdata_q[20] && !mem_rdata_q[19:7]) ||
 					(COMPRESSED_ISA && mem_rdata_q[15:0] == 16'h9002));
 
 			instr_getq    <= mem_rdata_q[6:0] == 7'b0001011 && mem_rdata_q[31:25] == 7'b0000000 && ENABLE_IRQ && ENABLE_IRQ_QREGS;
@@ -1571,7 +1582,7 @@ module picorv32 #(
 									latched_store <= pcpi_int_wr;
 									cpu_state <= cpu_state_fetch;
 								end else
-								if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
+								if (CATCH_ILLINSN && (pcpi_timeout || instr_ebreak)) begin
 									pcpi_valid <= 0;
 									`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
 									if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
@@ -1743,7 +1754,7 @@ module picorv32 #(
 							latched_store <= pcpi_int_wr;
 							cpu_state <= cpu_state_fetch;
 						end else
-						if (CATCH_ILLINSN && (pcpi_timeout || instr_ecall_ebreak)) begin
+						if (CATCH_ILLINSN && (pcpi_timeout || instr_ebreak)) begin
 							pcpi_valid <= 0;
 							`debug($display("EBREAK OR UNSUPPORTED INSN AT 0x%08x", reg_pc);)
 							if (ENABLE_IRQ && !irq_mask[irq_ebreak] && !irq_active) begin
@@ -1904,7 +1915,7 @@ module picorv32 #(
 			end else
 				cpu_state <= cpu_state_trap;
 		end
-		if (!CATCH_ILLINSN && decoder_trigger_q && !decoder_pseudo_trigger_q && instr_ecall_ebreak) begin
+		if (!CATCH_ILLINSN && decoder_trigger_q && !decoder_pseudo_trigger_q && instr_ebreak) begin
 			cpu_state <= cpu_state_trap;
 		end
 
